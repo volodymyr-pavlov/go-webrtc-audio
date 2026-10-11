@@ -10,7 +10,7 @@ work is done.
 3. The commit message is in the [Conventional Commits](https://www.conventionalcommits.org/) style. `fix:` makes a
    patch release, `feat:` a minor release, and `feat!:` or a `BREAKING CHANGE:` footer a major release. The messages
    decide the next version number.
-4. A merge request against `main` says what changed and why.
+4. A pull request against `main` says what changed and why.
 
 ## How the code is written
 
@@ -27,19 +27,19 @@ work is done.
 - Every error is declared in the `errors.go` of its package, each with its own `var`. `make check-style` checks it.
 - Each package-level `var` stands on its own, never in a `var ( ... )` group.
 - The linters are the rules of the project. A `//nolint` comment silences none of them. The code changes, or
-  `.golangci.yml` changes in a merge request of its own.
+  `.golangci.yml` changes in a pull request of its own.
 
 ## Git hooks
 
 `make hooks` installs the hooks of `lefthook.yml`. Before a commit, they run `gofmt`, `make check-style`, `make lint`,
 `shellcheck` and `prettier` on the staged files, in parallel. They also check that the first line of the commit message
 starts with a type, such as `feat(api): ...`, because semantic-release reads it. `lefthook` is built from the `tools`
-module, so nothing else needs to be installed. The pipeline runs the same checks again, so a hook that was skipped with
+module, so nothing else needs to be installed. The workflow runs the same checks again, so a hook that was skipped with
 `--no-verify` is found there.
 
-## The pipeline
+## The workflow
 
-The pipeline runs on every merge request, on `main` and on tags. It builds and deploys nothing.
+The workflow in `.github/workflows/ci.yml` runs on every pull request and on `main`. It builds and deploys nothing.
 
 | Job              | Command           | What it checks                                                           |
 | ---------------- | ----------------- | ------------------------------------------------------------------------ |
