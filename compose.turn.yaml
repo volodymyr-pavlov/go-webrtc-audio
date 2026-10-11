@@ -1,0 +1,76 @@
+# The stand with a TURN server, for listeners whose network does not let them reach the UDP port of the backend.
+#
+#   make turn-secret     writes a random TURN_SECRET into .env, once. Git ignores that file.
+#   make stand-up-turn   starts the stand with coturn next to the backend.
+#
+# Like compose.yaml, this file needs `--env-file scripts/versions.env` for COTURN_IMAGE. The Makefile passes it.
+#
+# coturn is the official image of the coturn project. It shares the network of the backend, so what it relays reaches
+# the UDP port of the backend on the loopback address. That is why coturn may relay to loopback peers here.
+#
+# A real deployment is different. coturn runs on its own host, with its own public address and a certificate for
+# `turns:`. It denies relaying to private and loopback addresses (`denied-peer-ip`). TURN_URL gives the backend the name
+# of that host.
+#
+# The backend makes the credentials for each browser from TURN_SECRET, and they last an hour. The secret never reaches a
+# browser. The backend and coturn read it from files that compose makes, not from their command lines.
+#
+# Settings are optional:
+#   TURN_HOST   the address that a browser reaches coturn on (default 127.0.0.1)
+#   TURN_PORT   its port, for UDP and TCP (default 3478)
+#
+# The flags `-turn-url` and `-turn-secret-file` of the backend come from TURN_URL and TURN_SECRET_FILE in compose.yaml.
+# `make stand-up-turn` sets both. With docker compose alone, set TURN_URL to the `turn:` addresses, comma separated, and
+# TURN_SECRET_FILE to /run/secrets/turn_secret.
+
+services:
+  backend:
+    secrets:
+      - turn_secret
+    ports:
+      - '${TURN_PORT:-3478}:3478/udp'
+      - '${TURN_PORT:-3478}:3478/tcp'
+      - '49160-49180:49160-49180/udp'
+
+  turn:
+    image: ${COTURN_IMAGE}
+    network_mode: service:backend
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: ['-c', '/etc/coturn/turnserver.conf']
+    configs:
+      - source: turnserver
+        target: /etc/coturn/turnserver.conf
+    # The coturn program has the file capability to bind low ports. The kernel refuses to run it if the container lacks
+    # that capability, so this container keeps NET_BIND_SERVICE and nothing else.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+secrets:
+  turn_secret:
+    environment: TURN_SECRET
+
+configs:
+  turnserver:
+    content: |
+      listening-port=3478
+      min-port=49160
+      max-port=49180
+      realm=go-webrtc-audio
+      external-ip=${TURN_HOST:-127.0.0.1}
+      use-auth-secret
+      static-auth-secret=${TURN_SECRET:-}
+      fingerprint
+      no-cli
+      no-tls
+      no-dtls
+      no-multicast-peers
+      allow-loopback-peers
+      user-quota=12
+      total-quota=2000
+      stale-nonce=600
+      simple-log
+      log-file=stdout

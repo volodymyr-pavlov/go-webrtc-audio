@@ -1,0 +1,179 @@
+# Checks on every pull request and on every push to main: format, vet, tests with the race detector, linters, known
+# vulnerabilities, and the page. The workflow builds and deploys nothing. On main, the last job writes the changelog and
+# creates the version tag and the GitHub Release (see CONTRIBUTING.md). It uses the workflow's own GITHUB_TOKEN.
+# Actions are pinned by commit; the tag in the comment is what the commit resolved to when it was last updated.
+# To update: git ls-remote --tags https://github.com/<action> refs/tags/<tag>, then replace the commit and tag together.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  # The release job commits CHANGELOG.md as "chore(release): X.Y.Z". A push made with GITHUB_TOKEN starts no workflow,
+  # so that commit is not checked again; the condition below covers the same commit pushed by hand.
+  fmt-vet:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/backend/go.mod
+          cache-dependency-path: |
+            apps/backend/go.sum
+            apps/backend/tools/go.sum
+      - run: make fmt vet
+
+  # ffmpeg lets the playlist tests run instead of skipping, and no other job runs them.
+  test-race:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/backend/go.mod
+          cache-dependency-path: |
+            apps/backend/go.sum
+            apps/backend/tools/go.sum
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg >/dev/null
+      - run: make test-race
+
+  lint:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/backend/go.mod
+          cache-dependency-path: |
+            apps/backend/go.sum
+            apps/backend/tools/go.sum
+      - run: make lint
+
+  staticcheck:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/backend/go.mod
+          cache-dependency-path: |
+            apps/backend/go.sum
+            apps/backend/tools/go.sum
+      - run: make staticcheck
+
+  style:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/backend/go.mod
+          cache-dependency-path: |
+            apps/backend/go.sum
+            apps/backend/tools/go.sum
+      - run: make check-style
+
+  shellcheck:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends shellcheck >/dev/null
+      - run: make shellcheck
+
+  vulncheck:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/backend/go.mod
+          cache-dependency-path: |
+            apps/backend/go.sum
+            apps/backend/tools/go.sum
+      - run: make vulncheck
+
+  frontend-check:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      - run: make frontend-install
+      - run: make frontend-check
+      - run: make frontend-build
+
+  # Runs semantic-release on main after every check. It reads the commit messages since the last tag. If one of them is
+  # a feat or a fix, it writes the notes into CHANGELOG.md, commits that file as "chore(release): X.Y.Z", pushes the
+  # vX.Y.Z tag and creates the GitHub Release.
+  release:
+    if: ${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    needs: [fmt-vet, test-race, lint, staticcheck, style, shellcheck, vulncheck, frontend-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: release/package-lock.json
+      - run: npm ci --prefix release
+      - run: npx --prefix release semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

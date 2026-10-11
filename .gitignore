@@ -1,0 +1,17 @@
+.bin/
+.DS_Store
+.idea/
+.env
+audio/*.opus
+audio/*.wav
+audio/*.ogg
+audio/*.mp3
+!audio/.gitkeep
+apps/frontend/node_modules/
+apps/frontend/.dist/
+apps/frontend/.reports/
+apps/frontend/.vitest/
+out/
+release/node_modules/
+release/.npm/
+.go/

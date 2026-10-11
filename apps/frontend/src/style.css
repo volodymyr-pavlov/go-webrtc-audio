@@ -1,0 +1,56 @@
+@import 'tailwindcss';
+
+@theme {
+  --background-image-brand: linear-gradient(
+    to bottom right,
+    var(--color-emerald-400),
+    var(--color-teal-400),
+    var(--color-violet-500)
+  );
+  --background-image-backdrop: linear-gradient(135deg, #6ee7b7 0%, #a7f3d0 32%, #bfdbfe 52%, #c4b5fd 78%, #a78bfa 100%);
+  --animate-gradient-shift: gradient-shift 36s ease-in-out infinite alternate;
+
+  @keyframes gradient-shift {
+    0% {
+      transform: translate3d(-7%, -5%, 0) rotate(-2deg);
+    }
+    100% {
+      transform: translate3d(7%, 5%, 0) rotate(2deg);
+    }
+  }
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+@keyframes equalizer {
+  0% {
+    transform: scaleY(0.2);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+/*
+ * The beat of an equalizer bar, written as separate properties and not as the one `animation` shorthand. The shorthand
+ * sets the delay too, and it comes later in the stylesheet than a class that sets only the delay, so it would wipe out
+ * the step that each bar is behind the one before it, and every bar would move together.
+ */
+@utility equalizer-bar {
+  animation-name: equalizer;
+  animation-duration: 1.2s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+/** The frosted white panel that the player and the track list sit in. */
+@utility card {
+  @apply rounded-2xl border border-white/70 bg-white/70 shadow-xl ring-1 shadow-slate-900/10 ring-slate-900/5 backdrop-blur-xl;
+}

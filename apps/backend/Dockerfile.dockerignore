@@ -1,0 +1,8 @@
+.bin
+.git
+.scratch
+out
+apps/frontend
+audio/*.wav
+audio/*.opus
+audio/*.ogg

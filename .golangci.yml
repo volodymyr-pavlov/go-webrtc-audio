@@ -1,0 +1,34 @@
+version: '2'
+
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - gocritic
+    - misspell
+    - nilnil
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - wastedassign
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+  exclusions:
+    # Deferred Close, os.RemoveAll and the print functions may drop their errors.
+    presets:
+      - std-error-handling
+    rules:
+      # A test closes what it opened with defer and writes without reading the answer. A failure shows in the assertions.
+      - linters: [errcheck]
+        path: _test\.go
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

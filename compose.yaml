@@ -1,0 +1,101 @@
+# The stand: the backend, the page on nginx in front of it, and the load generator on request.
+#
+#   make stand-up      builds and starts the stand. The page is on http://localhost:8080.
+#   make stand-load    connects 100 fake listeners and prints the report.
+#   make stand-down    stops the stand.
+#
+# The base images come only from scripts/versions.env, which has no copy here. The Makefile passes that file, and the
+# project .env after it when there is one, because compose skips .env once an --env-file is given. Without make, both
+# have to be passed by hand (`--env-file scripts/versions.env` is required), or the build has no base image:
+#   docker compose --env-file scripts/versions.env --env-file .env up --build
+#
+# The browser loads the page and calls /api/... on nginx, which passes those calls to the backend. The audio goes from
+# the backend straight to the browser over UDP port 5005, so that port is published on the backend.
+#
+# Settings come from the environment or from a .env file. All are optional.
+#   ICE_HOST          the address that a browser reaches the UDP port of the backend on (default 127.0.0.1). Other
+#                     devices need the address of the machine.
+#   MODE              how the stream reaches listeners: fanout, track or naive (default fanout)
+#   FRAME             audio in each packet: 20ms, 40ms or 60ms (default 20ms)
+#   BATCH             packets sent with one system call (default 64). 0 sends one at a time.
+#   QUEUE             packets a listener may have waiting (default 0, which is 32). -1 has no queue: the shard writes.
+#   RUNTIME_INTERVAL  time between readings of the runtime health (default 1s). 0 reads none.
+#   PRESENTER, PRESENTER_TTS, PRESENTER_OLLAMA, PRESENTER_MODEL
+#                     the AI presenter, see compose.ai.yaml
+#   TURN_URL, TURN_SECRET_FILE
+#                     a TURN server for listeners that cannot reach the backend, see compose.turn.yaml
+#   LISTENERS         fake listeners of the load generator (default 100)
+#   HOLD              how long they stay connected (default 30s)
+
+services:
+  backend:
+    image: go-webrtc-audio-backend:latest
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+      args:
+        GO_ALPINE_IMAGE: ${GO_ALPINE_IMAGE}
+        ALPINE_IMAGE: ${ALPINE_IMAGE}
+    command:
+      - -http=:8080
+      - -audio=/app/audio
+      - -ice-port=5005
+      - -ice-host=${ICE_HOST:-127.0.0.1}
+      - -mode=${MODE:-fanout}
+      - -frame=${FRAME:-20ms}
+      - -batch=${BATCH:-64}
+      - -queue=${QUEUE:-0}
+      - -runtime-interval=${RUNTIME_INTERVAL:-1s}
+      - -presenter=${PRESENTER:-false}
+      - -presenter-tts=${PRESENTER_TTS:-}
+      - -presenter-ollama=${PRESENTER_OLLAMA:-http://127.0.0.1:11434}
+      - -presenter-model=${PRESENTER_MODEL:-phi3.5}
+      - -turn-url=${TURN_URL:-}
+      - -turn-secret-file=${TURN_SECRET_FILE:-}
+      # The profiler is safe here. The API is published on the loopback interface only, and nginx does not pass it on.
+      - -pprof
+    ports:
+      # The audio. Browsers connect here directly.
+      - '5005:5005/udp'
+      # The API, for the metrics and the profiler. The page does not need it.
+      - '127.0.0.1:8081:8080/tcp'
+    ulimits:
+      nofile: 65536
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/api/playlist']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  frontend:
+    image: go-webrtc-audio-frontend:latest
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        NODE_ALPINE_IMAGE: ${NODE_ALPINE_IMAGE}
+        NGINX_IMAGE: ${NGINX_IMAGE}
+    ports:
+      - '8080:8080/tcp'
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Runs in the network of the backend and reaches it over loopback, so it needs no published port.
+  #   docker compose --profile load run --rm loadgen
+  loadgen:
+    image: go-webrtc-audio-backend:latest
+    profiles: ['load']
+    network_mode: 'service:backend'
+    depends_on:
+      backend:
+        condition: service_healthy
+    ulimits:
+      nofile: 65536
+    entrypoint: ['loadgen']
+    command:
+      - -server=http://127.0.0.1:8080
+      - -listeners=${LISTENERS:-100}
+      - -hold=${HOLD:-30s}
+      - -label=${MODE:-fanout}-${FRAME:-20ms}-batch${BATCH:-64}

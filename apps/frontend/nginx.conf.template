@@ -1,0 +1,72 @@
+# The entrypoint of the image fills in ${BACKEND_URL} and ${DNS_RESOLVER} from the environment at start-up.
+#
+# One address may start 20 listeners a second, with a burst of 40. Every offer costs the backend a peer connection, and
+# an offer that never connects holds a place until the connect timeout. Behind another proxy, the address is the one of
+# that proxy. The proxy must pass on the real address (the realip module of nginx), or all listeners share this limit.
+limit_req_zone $binary_remote_addr zone=listen:10m rate=20r/s;
+limit_req_status 429;
+
+server {
+    listen 8080;
+    server_name _;
+    server_tokens off;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 512;
+    gzip_types text/css text/javascript application/javascript application/json image/svg+xml;
+
+    # The name of the backend is looked up again every few seconds, so a backend that was recreated is found at its new
+    # address.
+    resolver ${DNS_RESOLVER} valid=5s ipv6=off;
+    set $backend ${BACKEND_URL};
+
+    # An add_header in a location replaces the inherited ones, so each location includes the security headers itself.
+    location /assets/ {
+        include /etc/nginx/security.inc;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    # Only the routes that the page uses go to the backend. The backend also serves /api/metrics, /api/runtime and
+    # /debug/pprof, and they stay out of reach of the public. The request is passed on as it came.
+    location = /api/listen {
+        limit_except POST { deny all; }
+        limit_req zone=listen burst=40 nodelay;
+        include /etc/nginx/proxy.inc;
+        proxy_pass $backend;
+    }
+
+    location ~ ^/api/listen/[0-9]+$ {
+        limit_except DELETE { deny all; }
+        include /etc/nginx/proxy.inc;
+        proxy_pass $backend;
+    }
+
+    # The credentials of the TURN server, new for each connection. Without a TURN server, the answer is an empty list.
+    location = /api/ice {
+        limit_except GET { deny all; }
+        limit_req zone=listen burst=40 nodelay;
+        include /etc/nginx/proxy.inc;
+        proxy_pass $backend;
+    }
+
+    location = /api/playlist {
+        limit_except GET { deny all; }
+        include /etc/nginx/proxy.inc;
+        proxy_pass $backend;
+    }
+
+    location /api/ {
+        include /etc/nginx/security.inc;
+        return 404;
+    }
+
+    location / {
+        include /etc/nginx/security.inc;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri $uri/ =404;
+    }
+}

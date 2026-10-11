@@ -1,0 +1,53 @@
+# The AI presenter. While a track plays, a language model on this machine writes what a presenter says before the next
+# track, a voice speaks it, and the server plays it in front of that track.
+#
+#   make ai-up         starts Ollama (the official image) and pulls the model into a volume, once (about 2 GB).
+#   make stand-up-ai   starts the stand with the presenter on, with the model and the voice of the speech image.
+#   make ai-down       stops Ollama. The model stays in the volume.
+#
+# Like compose.yaml, this file needs `--env-file scripts/versions.env` for OLLAMA_IMAGE. The Makefile passes it.
+#
+# Ollama listens on 127.0.0.1 only, and the backend reaches it by name on the network of the stand. Only this machine
+# can ask it, and nothing is sent anywhere else. The server refuses a model server that is not local, unless it is told
+# to allow one.
+#
+# The model is phi3.5, under the MIT licence. PRESENTER_MODEL changes it. Read the licence of any other model. The voice
+# is espeak-ng. It sounds robotic, but it is small and needs no network. PRESENTER_TTS can name another speech program
+# that the backend image carries.
+#
+# Settings are optional:
+#   PRESENTER_MODEL  the Ollama model (default phi3.5)
+#   PRESENTER_TTS    the speech program, with {out} for the file it writes. The text goes to its standard input.
+#                    Default: espeak-ng -v en-us -s 165 --stdin -w {out}
+
+services:
+  backend:
+    image: go-webrtc-audio-backend:speech
+    build:
+      target: speech
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ollama:
+    image: ${OLLAMA_IMAGE}
+    ports:
+      - '127.0.0.1:11434:11434'
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      # Keeps the model in memory. Loading it takes longer than a short track, and the presenter has only the length
+      # of a track.
+      OLLAMA_KEEP_ALIVE: '-1'
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ['CMD', 'ollama', 'list']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  ollama-models:
